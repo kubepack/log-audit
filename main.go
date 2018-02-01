@@ -22,6 +22,13 @@ var mux sync.Mutex
 
 func main() {
 	fmt.Println("Server Started...")
+
+	// Test Code @TODO: Hanif
+	err := os.RemoveAll(filepath.Join(os.TempDir(), AppName))
+	if err != nil {
+		log.Fatalln(err)
+	}
+	// Test Code Ends
 	routine := 0
 	http.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/events" {
@@ -54,7 +61,7 @@ func main() {
 		fmt.Println("hello request222")
 		writer.Header().Set("Content-Type", "application/json")
 
-		resp := map[string]string{}
+		resp := map[string]v1beta1.EventList{}
 		db, err := OpenGoLevelDB()
 		if err != nil {
 			log.Fatalln(err)
@@ -68,11 +75,14 @@ func main() {
 			// only valid until the next call to Next.
 			key := iter.Key()
 			value := iter.Value()
-			fmt.Println("hello world--------------")
-			fmt.Println(key)
-			fmt.Println("hello world--------------")
-			resp[string(key)] =  string(value)
+			tmpEventList := &v1beta1.EventList{}
+			err = json.Unmarshal(value, tmpEventList)
+			resp[string(key)] = *tmpEventList
+			if err != nil {
+				fmt.Println("Error to Unmarshal")
+			}
 		}
+
 
 		iter.Release()
 		err = iter.Error()
@@ -81,6 +91,9 @@ func main() {
 		}
 
 		res, err := json.Marshal(resp)
+		if err != nil {
+			fmt.Println(err)
+		}
 		writer.Write(res)
 	})
 
@@ -88,8 +101,6 @@ func main() {
 }
 
 func ProcessEvents(list *v1beta1.EventList, routine int) error {
-	fmt.Printf("Routine Number %d\n", routine)
-	fmt.Printf("Hello %s\n", list.Kind)
 	if list == nil {
 		fmt.Println("Nil")
 		return fmt.Errorf("%s", "Empty event list")
@@ -105,15 +116,12 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 	eventList := &v1beta1.EventList{}
 	var events []*v1beta1.Event
 	for _, val := range list.Items {
-		fmt.Println("-----------------------")
 		fmt.Println(routine)
 		_, err := json.MarshalIndent(val, "", "  ")
 		if err != nil {
 			log.Fatalln(err)
 		}
 		if val.ResponseObject != nil {
-			fmt.Println("********************")
-
 			type Item struct {
 				metav1.TypeMeta   `json:",inline"`
 				metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
@@ -128,7 +136,6 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 
 			gitCommitHash, ok := item.Annotations["git-commit-hash"]
 			if ok {
-				fmt.Println("Git Commit Hash Present....", gitCommitHash)
 				evByte, err := json.Marshal(val)
 				if err != nil {
 					fmt.Println("Error during marshalling event")
@@ -140,10 +147,6 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 					fmt.Println("Error during Unmarshall event byte")
 				}
 				events = append(events, eventTmp)
-
-				/*if _, ok = mapToGitCommitHash[gitCommitHash]; !ok {
-					mapToGitCommitHash[gitCommitHash] = &v1beta1.EventList{}
-				}*/
 				ret, err := db.Has([]byte(gitCommitHash), nil)
 				if !ret {
 					mapToGitCommitHash[gitCommitHash] = &v1beta1.EventList{}
@@ -152,19 +155,15 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 					if err != nil {
 						fmt.Println("Error to get from db...")
 					}
-					tmp, err := json.Marshal(dbEventList)
+
 					tmpEventList := &v1beta1.EventList{}
-					err = json.Unmarshal(tmp, tmpEventList)
+					err = json.Unmarshal(dbEventList, tmpEventList)
 					if err != nil {
-						fmt.Println("Error to Unmarshal...")
+						fmt.Println("Error to Unmarshal...", err)
 					}
 					mapToGitCommitHash[gitCommitHash] = tmpEventList
 				}
 				eventList = mapToGitCommitHash[gitCommitHash]
-
-				fmt.Println("000000000000000000")
-				fmt.Println(eventTmp)
-				fmt.Println("000000000000000000")
 				eventList.Items = append(eventList.Items, *eventTmp)
 				mapToGitCommitHash[gitCommitHash] = eventList
 			}
@@ -172,11 +171,9 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 	}
 	mux.Lock()
 	defer mux.Unlock()
-	fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 	for key, value := range mapToGitCommitHash {
-		fmt.Println(key)
-		fmt.Println(value.Items)
 		tmpEventListByte, err := json.Marshal(value)
+		fmt.Println(string(tmpEventListByte))
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -184,24 +181,8 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 		if err != nil {
 			fmt.Println("Error to PUT into DB")
 		}
-		tmpR, _ := db.Get([]byte(key), nil)
-		fmt.Println(string(tmpR))
-	}
-	fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
-	/*data, err := db.Get([]byte(gitCommitHash), nil)
-
-	ok, err := db.Has([]byte(gitCommitHash), nil)
-	if err != nil {
-		fmt.Println(err)
 	}
-	if ok {
-		fmt.Println("present-----")
-	}
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("here is data", data)*/
 
 	return nil
 }
