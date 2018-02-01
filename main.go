@@ -34,7 +34,6 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		fmt.Println(string(resp))
 		eventList := &v1beta1.EventList{}
 		err = json.Unmarshal(resp, eventList)
 		if err != nil {
@@ -53,7 +52,36 @@ func main() {
 			return
 		}
 		fmt.Println("hello request222")
-		fmt.Fprintf(writer, "Hello %q", html.EscapeString(request.URL.Path))
+		writer.Header().Set("Content-Type", "application/json")
+
+		resp := map[string]string{}
+		db, err := OpenGoLevelDB()
+		if err != nil {
+			log.Fatalln(err)
+		}
+		defer db.Close()
+
+		iter := db.NewIterator(nil, nil)
+
+		for iter.Next() {
+			// Remember that the contents of the returned slice should not be modified, and
+			// only valid until the next call to Next.
+			key := iter.Key()
+			value := iter.Value()
+			fmt.Println("hello world--------------")
+			fmt.Println(key)
+			fmt.Println("hello world--------------")
+			resp[string(key)] =  string(value)
+		}
+
+		iter.Release()
+		err = iter.Error()
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		res, err := json.Marshal(resp)
+		writer.Write(res)
 	})
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -67,6 +95,12 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 		return fmt.Errorf("%s", "Empty event list")
 	}
 
+	db, err := OpenGoLevelDB()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
 	mapToGitCommitHash := map[string]*v1beta1.EventList{}
 	eventList := &v1beta1.EventList{}
 	var events []*v1beta1.Event
@@ -77,7 +111,6 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		fmt.Println(val.ObjectRef)
 		if val.ResponseObject != nil {
 			fmt.Println("********************")
 
@@ -108,26 +141,53 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 				}
 				events = append(events, eventTmp)
 
-				if _, ok = mapToGitCommitHash[gitCommitHash]; !ok {
+				/*if _, ok = mapToGitCommitHash[gitCommitHash]; !ok {
 					mapToGitCommitHash[gitCommitHash] = &v1beta1.EventList{}
+				}*/
+				ret, err := db.Has([]byte(gitCommitHash), nil)
+				if !ret {
+					mapToGitCommitHash[gitCommitHash] = &v1beta1.EventList{}
+				} else {
+					dbEventList, err := db.Get([]byte(gitCommitHash), nil)
+					if err != nil {
+						fmt.Println("Error to get from db...")
+					}
+					tmp, err := json.Marshal(dbEventList)
+					tmpEventList := &v1beta1.EventList{}
+					err = json.Unmarshal(tmp, tmpEventList)
+					if err != nil {
+						fmt.Println("Error to Unmarshal...")
+					}
+					mapToGitCommitHash[gitCommitHash] = tmpEventList
 				}
 				eventList = mapToGitCommitHash[gitCommitHash]
+
+				fmt.Println("000000000000000000")
+				fmt.Println(eventTmp)
+				fmt.Println("000000000000000000")
 				eventList.Items = append(eventList.Items, *eventTmp)
+				mapToGitCommitHash[gitCommitHash] = eventList
 			}
 		}
 	}
 	mux.Lock()
 	defer mux.Unlock()
-	db, err := OpenGolevelDB()
-	defer db.Close()
-	if err != nil {
-		return err
-	}
-
+	fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 	for key, value := range mapToGitCommitHash {
 		fmt.Println(key)
-		fmt.Println(value)
+		fmt.Println(value.Items)
+		tmpEventListByte, err := json.Marshal(value)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		err = db.Put([]byte(key), tmpEventListByte, nil)
+		if err != nil {
+			fmt.Println("Error to PUT into DB")
+		}
+		tmpR, _ := db.Get([]byte(key), nil)
+		fmt.Println(string(tmpR))
 	}
+	fmt.Println("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
 
 	/*data, err := db.Get([]byte(gitCommitHash), nil)
 
@@ -146,7 +206,7 @@ func ProcessEvents(list *v1beta1.EventList, routine int) error {
 	return nil
 }
 
-func OpenGolevelDB() (*leveldb.DB, error) {
+func OpenGoLevelDB() (*leveldb.DB, error) {
 	path := filepath.Join(os.TempDir(), AppName)
 
 	if _, err := os.Stat(path); err != nil {
