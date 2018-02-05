@@ -6,8 +6,9 @@ Then, log-audit server saves these events to database(log-audit uses [goleveldb]
 
 ### Test Process
 
-- Run `main.go` file by `go run main.go`
-- Run `restart.sh` from `minikube/1.9/` directory. 
+- Run `main.go` by `go run main.go`
+- Replace `<PRIMARY_NETWORK_INTERFACE_IP>` in `minikube/1.9/auditing/hit-config.yaml` file with local computer's `PRIMARY_NETWORK_INTERFACE_IP`
+- Run `restart.sh` from `minikube/1.9/auditing` directory.
 This command copies `audit-policy.yaml`, `kube-apiserver.yaml` and `hit-config.yaml` files into `~/minikube/files` folder. 
 Then `minikube` will mount this folder inside the `Minikube VM` as `tmp/files` folder.
 - Once minikube is running, ssh into minikube and run following command:
