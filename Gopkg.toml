@@ -25,6 +25,38 @@
 #   unused-packages = true
 
 
+[[constraint]]
+  branch = "master"
+  name = "github.com/appscode/go"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/golang/glog"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/spf13/cobra"
+
+[[constraint]]
+  branch = "master"
+  name = "github.com/syndtr/goleveldb"
+
+[[constraint]]
+  name = "k8s.io/apimachinery"
+  version = "kubernetes-1.9.0"
+
+[[constraint]]
+  name = "k8s.io/apiserver"
+  version = "kubernetes-1.9.0"
+
+[[constraint]]
+  name = "k8s.io/client-go"
+  version = "6.0.0"
+
+[[constraint]]
+  branch = "master"
+  name = "k8s.io/kube-openapi"
+
 [prune]
   go-tests = true
   unused-packages = true

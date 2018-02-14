@@ -1,0 +1,95 @@
+apiVersion: apps/v1beta1
+kind: Deployment
+metadata:
+  name: packserver
+  namespace: $KUBEPACK_NAMESPACE
+  labels:
+    app: kubepack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubepack
+  template:
+    metadata:
+      labels:
+        app: kubepack
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      serviceAccountName: $KUBEPACK_SERVICE_ACCOUNT
+      imagePullSecrets: [${KUBEPACK_IMAGE_PULL_SECRET}]
+      containers:
+      - name: apiserver
+        args:
+        - apiserver
+        - --secure-port=8443
+        - --audit-log-path=-
+        - --tls-cert-file=/var/serving-cert/tls.crt
+        - --tls-private-key-file=/var/serving-cert/tls.key
+        - --v=3
+        image: ${KUBEPACK_DOCKER_REGISTRY}/packserver:canary
+        ports:
+        - containerPort: 8443
+        volumeMounts:
+        - mountPath: /var/serving-cert
+          name: serving-cert
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8443
+            scheme: HTTPS
+      volumes:
+      - name: serving-cert
+        secret:
+          defaultMode: 420
+          secretName: packserver-cert
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+---
+# kube lacks the service serving cert signer, so provide a manual secret for it
+apiVersion: v1
+kind: Secret
+metadata:
+  name: packserver-cert
+  namespace: $KUBEPACK_NAMESPACE
+  labels:
+    app: kubepack
+type: kubernetes.io/tls
+data:
+  tls.crt: $TLS_SERVING_CERT
+  tls.key: $TLS_SERVING_KEY
+---
+# to be able to expose TSB inside the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: packserver
+  namespace: $KUBEPACK_NAMESPACE
+  labels:
+    app: kubepack
+spec:
+  ports:
+  - name: admission
+    port: 443
+    targetPort: 8443
+  selector:
+    app: kubepack
+---
+# register as aggregated apiserver
+apiVersion: apiregistration.k8s.io/v1beta1
+kind: APIService
+metadata:
+  name: v1alpha1.kubepack.com
+  labels:
+    app: kubepack
+spec:
+  caBundle: $SERVICE_SERVING_CERT_CA
+  group: kubepack.com
+  groupPriorityMinimum: 1000
+  versionPriority: 15
+  service:
+    name: packserver
+    namespace: $KUBEPACK_NAMESPACE
+  version: v1alpha1

@@ -1,0 +1,65 @@
+# to read the config for terminating authentication
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: RoleBinding
+metadata:
+  name: packserver-extension-server-authentication-reader
+  namespace: kube-system
+roleRef:
+  kind: Role
+  apiGroup: rbac.authorization.k8s.io
+  name: extension-packserver-authentication-reader
+subjects:
+- kind: ServiceAccount
+  name: $KUBEPACK_SERVICE_ACCOUNT
+  namespace: $KUBEPACK_NAMESPACE
+---
+# to delegate authentication and authorization
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: packserver-auth-delegator
+  labels:
+    app: kubepack
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: $KUBEPACK_SERVICE_ACCOUNT
+  namespace: $KUBEPACK_NAMESPACE
+---
+# to let the admission server read the secrets and pvc
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kubepack:packserver
+  labels:
+    app: kubepack
+rules:
+- apiGroups: ["storage.k8s.io"]
+  resources:
+  - storageclasses
+  verbs:
+  - get
+- apiGroups: [""]
+  resources:
+  - secrets
+  verbs:
+  - get
+---
+# to let the admission server read the secrets and pvc
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: packserver
+  labels:
+    app: kubepack
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  name: kubepack:packserver
+subjects:
+- kind: ServiceAccount
+  name: $KUBEPACK_SERVICE_ACCOUNT
+  namespace: $KUBEPACK_NAMESPACE
